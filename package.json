@@ -1,0 +1,34 @@
+{
+  "name": "mongodb-pubsub",
+  "version": "0.0.0",
+  "description": "MongoDB-backed pub/sub",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "dependencies": {
+    "mongodb": "^1.4.3"
+  },
+  "devDependencies": {
+    "tap": "*"
+  },
+  "scripts": {
+    "test": "tap ./test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/clayzermk1/mongodb-pubsub.git"
+  },
+  "keywords": [
+    "mongodb",
+    "pubsub",
+    "message",
+    "queue"
+  ],
+  "author": "Clay Walker <clayzermk1@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/clayzermk1/mongodb-pubsub/issues"
+  },
+  "homepage": "https://github.com/clayzermk1/mongodb-pubsub"
+}

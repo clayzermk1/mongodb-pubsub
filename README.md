@@ -1,4 +1,4 @@
 mongodb-pubsub
 ==============
 
-MongoDB backed pub/sub
+MongoDB-backed pub/sub
