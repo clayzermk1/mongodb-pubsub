@@ -1,20 +1,29 @@
-var test = require('tap').test,
-    PubSub = require('../index.js');
+var tap = require('tap'),
+    Collection = require('mongodb').Collection,
+    Db = require('mongodb').Db,
+    Stream = require('stream'),
+    EventEmitter = require('events').EventEmitter,
+    PubSub = require('../index.js'),
+    util = require('util');
 
-test('construction using default MongoDB URL', function (t) {
+tap.test('construction using default MongoDB URL', function (t) {
   var ps = new PubSub();
-  t.type(ps, 'object', 'should return a PubSub instance');
-  t.end();
+  ps.on('open', function () {
+    t.ok(ps instanceof PubSub, 'should return a PubSub instance');
+    ps.close();
+  });
+  ps.on('close', function () {
+    t.end();
+  });
 });
 
-test('construction using custom MongoDB URL', function (t) {
-  var ps = new PubSub('mongodb://localhost:27017/mongodb-pubsub');
-  t.type(ps, 'object', 'should return a PubSub instance');
-  t.end();
-});
-
-test('instance has a _channels object', function (t) {
-  var ps = new PubSub();
-  t.type(ps._channels, 'object', 'should have a _channels object');
-  t.end();
+tap.test('construction using custom MongoDB URL and options', function (t) {
+  var ps = new PubSub('mongodb://localhost:27017/mongodb-pubsub', { "collection": "foo" });
+  ps.on('open', function () {
+    t.ok(ps instanceof PubSub, 'should return a PubSub instance');
+    ps.close();
+  });
+  ps.on('close', function () {
+    t.end();
+  });
 });
