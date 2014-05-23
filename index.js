@@ -9,8 +9,8 @@ var BSON = require('mongodb').BSON,
 var PubSub = function (uri, options) {
   EventEmitter.call(this);
 
-  // remember the id of the last event received
-  this._lastId = BSON.BSON_DATA_MIN_KEY;
+  // remember the timestamp of the last event received
+  this._last = new Date();
 
   // internal message queue
   this._queue = [];
@@ -48,7 +48,7 @@ var PubSub = function (uri, options) {
           self._buffer = buffer;
 
           // seed the first message before connecting
-          buffer.insert({ "event": "seed", "timestamp": new Date() }, function (err) {
+          buffer.insert({ "event": "seed", "timestamp": self._last }, function (err) {
             self._connect();
           });
         });
@@ -75,8 +75,7 @@ PubSub.prototype._connect = function () {
   var self = this;
 
   // event stream
-  // this._stream = this._buffer.find({ "_id": { "$gt": this._lastId } }, { "sort": { "$natural": 1 }, "tailable": true, "awaitdata": true }).stream();
-  this._stream = this._buffer.find({}, { "sort": { "$natural": 1 }, "tailable": true, "awaitdata": true }).stream();
+  this._stream = this._buffer.find({ "timestamp": { "$gt": this._last } }, { "sort": { "$natural": 1 }, "tailable": true, "awaitdata": true }).stream();
 
   this.emit('open');
 
@@ -86,7 +85,7 @@ PubSub.prototype._connect = function () {
   });
 
   this._stream.on('close', function () {
-    console.log('connection closed');
+    // console.log('connection closed');
     //TODO reconnect?
   });
 
@@ -94,7 +93,7 @@ PubSub.prototype._connect = function () {
     // console.log('message', util.inspect(message));
     self._channels.emit.apply(self._channels, message.args);
     self.emit.apply(self, message.args);
-    self._lastId = message._id;
+    self._last = message.timestamp;
   });
 
   // process queued messages in order
@@ -110,14 +109,15 @@ PubSub.prototype.subscribe = function (event, listener) {
 };
 
 PubSub.prototype.unsubscribe = function (event) {
-  if (event !== void 0) {
-    this._channels.removeAllListeners(event);
-    this.emit('unsubscribe', event);
+  if (event === void 0) {
+    this._channels.removeAllListeners();
+    event = 'all';
   }
   else {
-    this._channels.removeAllListeners();
-    this.emit('unsubscribe', 'all');
+    this._channels.removeAllListeners(event);
   }
+
+  this.emit('unsubscribe', event);
 
   return this;
 };
@@ -145,8 +145,8 @@ PubSub.prototype.publish = function (event) {
 };
 
 PubSub.prototype.close = function () {
-  // remove all channel listeners
-  this.unsubscribe();
+  // silently remove all channel listeners
+  this._channels.removeAllListeners();
 
   // close the cursor stream to the buffer
   if (this._stream !== void 0 && typeof this._stream.destroy === 'function') {
