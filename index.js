@@ -1,86 +1,54 @@
-var BSON = require('mongodb').BSON,
-    Db = require('mongodb').Db,
-    EventEmitter = require('events').EventEmitter,
+
+/**
+ * A MongoDB-backed pub/sub module.
+ * @module PubSub
+ */
+
+var EventEmitter = require('events').EventEmitter,
     MongoClient = require('mongodb').MongoClient,
-    Server = require('mongodb').Server,
-    url = require('url'),
     util = require('util');
 
-var PubSub = function (uri, options) {
+/**
+ * @public
+ * @constructor module:PubSub
+ * @param {string} [uri=mongodb://localhost:27017/mongodb-pubsub] - The MongoDB connection URI to connect to, defaults to `mongodb://localhost:27017/mongodb-pubsub`.
+ * @param {string} [collection=buffer] - The name of the collection to use as the message buffer, defaults to `buffer`.
+ */
+function PubSub (uri, collection) {
   EventEmitter.call(this);
 
   // remember the timestamp of the last event received
   this._last = new Date();
 
-  // internal message queue
-  this._queue = [];
-
-  // parse connection uri
-  if (uri !== void 0) {
-    uri = url.parse(uri);
-  }
-  else {
-    uri = url.parse(Db.DEFAULT_URL);
-  }
+  // connection uri
+  this._uri = uri || 'mongodb://localhost:27017/mongodb-pubsub';
 
   // channel listeners
   this._channels = new EventEmitter();
 
   // collection name override
-  this._collectionName = (options || {}).collection || 'buffer';
-
-  // database connection
-  this._db = new Db(/^\/([\w\-]+)[\w\-\/]*$/.exec(uri.pathname)[1], new Server(uri.hostname, uri.port, { "auto_reconnect": true }), { "w": 0 });
-
-  var self = this;
-  this._db.open(function (err) {
-    if (err) throw err;
-
-    // check for collection
-    self._db.collectionNames(self._collectionName, function (err, items) {
-      if (err) throw err;
-
-      if (items.length === 0) {
-        self._db.createCollection(self._collectionName, { "capped": true, "size": 1024 * 1024 * 5 }, function (err, buffer) {
-          if (err) throw err;
-
-          // message buffer
-          self._buffer = buffer;
-
-          // seed the first message before connecting
-          buffer.insert({ "event": "seed", "timestamp": self._last }, function (err) {
-            self._connect();
-          });
-        });
-      }
-      else {
-        // collection exists, assume it has messages
-        self._db.collection(self._collectionName, function (err, buffer) {
-          if (err) throw err;
-
-          // message buffer
-          self._buffer = buffer;
-
-          self._connect();
-        });
-      }
-    });
-  });
-
-  return this;
+  this._collectionName = collection || 'buffer';
 };
 util.inherits(PubSub, EventEmitter);
 
+/**
+ * Once the buffer collection is opened, connect with a tailed cursor.
+ * @private
+ * @function module:PubSub#_connect
+ * @fires PubSub#error
+ * @fires PubSub#message
+ */
 PubSub.prototype._connect = function () {
   var self = this;
 
   // event stream
   this._stream = this._buffer.find({ "timestamp": { "$gt": this._last } }, { "sort": { "$natural": 1 }, "tailable": true, "awaitdata": true }).stream();
 
-  this.emit('open');
-
   this._stream.on('error', function (err) {
-    throw err;
+    if (err != null) {
+      this.emit('error', err);
+      if (callback !== void 0) return callback(err);
+    }
     self.close();
   });
 
@@ -90,38 +58,173 @@ PubSub.prototype._connect = function () {
   });
 
   this._stream.on('data', function (message) {
-    // console.log('message', util.inspect(message));
+    console.log('message', util.inspect(message));
     self._channels.emit.apply(self._channels, message.args);
-    self.emit.apply(self, message.args);
+    self.emit('message', message.args);
     self._last = message.timestamp;
   });
+};
 
-  // process queued messages in order
-  while (this._queue.length > 0) {
-    this.publish.apply(this, this._queue.pop());
+/**
+ * Open a connection to the database and capped buffer collection. Create the collection if it doesn't exist.
+ * @public
+ * @function module:PubSub#open
+ * @param {Function} [callback] The callback to call when collection is opened. Will be passed an `err` argument if it exists or `null` otherwise.
+ * @fires PubSub#error
+ * @fires PubSub#open
+ */
+PubSub.prototype.open = function (callback) {
+  var self = this;
+  MongoClient.connect(this._uri, { "server": { "poolSize": 1024,"auto_reconnect": true }, "db": { "w": 0 } }, function (err, db) {
+    if (err != null) {
+      self.emit('error', err);
+      if (callback !== void 0) return callback(err);
+    }
+
+    self._db = db;
+
+    // check for collection
+    self._db.collectionNames(self._collectionName, function (err, collectionNames) {
+      if (err != null) {
+        self.emit('error', err);
+        if (callback !== void 0) return callback(err);
+      }
+
+      if (collectionNames.length === 0) {
+        self._db.createCollection(self._collectionName, { "capped": true, "size": 1024 * 1024 * 5 }, function (err, buffer) {
+          if (err != null) {
+            self.emit('error', err);
+            if (callback !== void 0) return callback(err);
+          }
+
+          // message buffer
+          self._buffer = buffer;
+
+          // seed the first message before connecting
+          buffer.insert({ "event": "seed", "timestamp": self._last }, function (err) {
+            if (err != null) {
+              self.emit('error', err);
+              if (callback !== void 0) return callback(err);
+            }
+            self._connect();
+            self.emit('open');
+            if (callback !== void 0) return callback(null);
+          });
+        });
+      }
+      else {
+        // collection exists, assume it has messages
+        self._db.collection(self._collectionName, function (err, buffer) {
+          if (err != null) {
+            self.emit('error', err);
+            if (callback !== void 0) return callback(err);
+          }
+
+          buffer.isCapped(function (err, capped) {
+            if (err != null) {
+              self.emit('error', err);
+              if (callback !== void 0) return callback(err);
+            }
+
+            // message buffer
+            self._buffer = buffer;
+            self._connect();
+            self.emit('open');
+            if (callback !== void 0) return callback(null);
+          });
+        });
+      }
+    });
+  });
+};
+
+/**
+ * Subscribe to a message channel.
+ * @public
+ * @function module:PubSub#subscribe
+ * @param {string} [event=message] - The name of the channel to subscribe to, defaults to `message`.
+ * @param {Function} listener - The function to call when a channel receives a message.
+ * @param {Function} [callback] - The callback to call when subscription is complete. Will be passed an `err` argument if it exists or `null` otherwise.
+ * @fires PubSub#error
+ * @fires PubSub#subscribe
+ */
+PubSub.prototype.subscribe = function (event, listener, callback) {
+  if (arguments.length === 3) {
+    // three arguments were provided, they better be a string, function, and a function
+    if (typeof event !== 'string' || typeof listener !== 'function' || typeof callback !== 'function') {
+      var err = new Error('invalid arguments supplied to subscribe()');
+      this.emit('error', err);
+      if (callback !== void 0) return callback(err);
+    }
   }
-};
-
-PubSub.prototype.subscribe = function (event, listener) {
-  this._channels.addListener(event, listener);
-  this.emit('subscribe', event);
-  return this;
-};
-
-PubSub.prototype.unsubscribe = function (event) {
-  if (event === void 0) {
-    this._channels.removeAllListeners();
-    event = 'all';
+  else if (arguments.length === 2) {
+    // only two arguments were provided
+    if (typeof event === 'function') {
+      // looks like we got a listener and a callback as arguments
+      callback = listener;
+      listener = event;
+      event = 'message';
+    }
+    else if (typeof event !== 'string') {
+      var err = new Error('invalid arguments supplied to subscribe()');
+      this.emit('error', err);
+      if (callback !== void 0) return callback(err);
+    }
+  }
+  else if (arguments.length === 1) {
+    // only one argument, it better be a listener
+    if (typeof event === 'function') {
+      listener = event;
+      event = 'message';
+    }
+    else {
+      var err = new Error('invalid arguments supplied to subscribe(), listener is required');
+      this.emit('error', err);
+      if (callback !== void 0) return callback(err);
+    }
   }
   else {
-    this._channels.removeAllListeners(event);
+    var err = new Error('invalid arguments supplied to subscribe(), listener is required');
+    this.emit('error', err);
+    if (callback !== void 0) return callback(err);
   }
 
-  this.emit('unsubscribe', event);
+  this._channels.addListener(event, listener);
 
-  return this;
+  this.emit('subscribe', event);
+  if (callback !== void 0) return callback(null);
 };
 
+/**
+ * Unsubscribe from a message channel.
+ * @public
+ * @function module:PubSub#unsubscribe
+ * @param {string} [event=message] - The name of the channel to unsubscribe from, defaults to `message`.
+ * @param {Function} [callback] - The callback to call when unsubscription is complete. Will be passed an `err` argument if it exists or `null` otherwise.
+ * @fires PubSub#unsubscribe
+ */
+PubSub.prototype.unsubscribe = function (event, callback) {
+  if (typeof event === 'function') {
+    callback = event;
+    event = 'message';
+  }
+
+  this._channels.removeAllListeners(event);
+
+  this.emit('unsubscribe', event);
+  if (callback !== void 0) return callback(null);
+};
+
+/**
+ * Publish a message to a channel.
+ * @public
+ * @function module:PubSub#publish
+ * @param {string} event - The name of the channel to publish to.
+ * @param {...(string|number|Object|Date|boolean|Array)} [arg] - Arguments.
+ * @param {Function} [callback] - The callback to call when publishing is complete. Will be passed an `err` argument if it exists or `null` otherwise.
+ * @fires PubSub#error
+ * @fires PubSub#publish
+ */
 PubSub.prototype.publish = function (event) {
   var self = this;
 
@@ -129,22 +232,32 @@ PubSub.prototype.publish = function (event) {
   var args = JSON.parse(JSON.stringify(arguments));
   args.length = arguments.length;
 
-  if (this._db._state === 'connected') {
-    // we have a connection, insert the message in the buffer
-    this._buffer.insert({ "event": event, "timestamp": new Date(), "args": args }, function (err) {
-      if (err) throw err;
-      self.emit('publish', event);
-    });
-  }
-  else {
-    // we aren't connected yet, queue up the message internally
-    self._queue.unshift(args);
+  var callback;
+  if (typeof arguments[arguments.length - 1] === 'function') {
+    callback = arguments[arguments.length - 1];
+    delete args[arguments.length - 1];
+    args.length --;
   }
 
-  return this;
+  // insert the message in the buffer
+  this._buffer.insert({ "event": event, "timestamp": new Date(), "args": args }, function (err) {
+    if (err != null) {
+      self.emit('error', err);
+      if (callback !== void 0) return callback(err);
+    }
+    self.emit('publish', event);
+    if (callback !== void 0) return callback(null);
+  });
 };
 
-PubSub.prototype.close = function () {
+/**
+ * Closes database connections and removes channel listeners.
+ * @public
+ * @function module:PubSub#close
+ * @param {Function} [callback] - The callback to call when publishing is complete. Will be passed an `err` argument if it exists or `null` otherwise.
+ * @fires PubSub#close
+ */
+PubSub.prototype.close = function (callback) {
   // silently remove all channel listeners
   this._channels.removeAllListeners();
 
@@ -159,8 +272,7 @@ PubSub.prototype.close = function () {
   }
 
   this.emit('close');
-
-  return this;
+  if (callback !== void 0) return callback(null);
 };
 
 module.exports = PubSub;

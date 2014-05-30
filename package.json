@@ -4,15 +4,18 @@
   "description": "MongoDB-backed pub/sub",
   "main": "index.js",
   "directories": {
+    "doc": "doc",
     "test": "test"
   },
   "dependencies": {
     "mongodb": "^1.4.3"
   },
   "devDependencies": {
+    "jsdoc": "*",
     "tap": "*"
   },
   "scripts": {
+    "doc": "./node_modules/.bin/jsdoc -d doc index.js",
     "test": "tap ./test"
   },
   "repository": {
@@ -21,8 +24,12 @@
   },
   "keywords": [
     "mongodb",
+    "pub",
+    "sub",
     "pubsub",
+    "pub/sub",
     "message",
+    "broker",
     "queue"
   ],
   "author": "Clay Walker <clayzermk1@gmail.com>",

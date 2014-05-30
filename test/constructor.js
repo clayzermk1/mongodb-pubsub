@@ -1,29 +1,28 @@
 var tap = require('tap'),
-    Collection = require('mongodb').Collection,
-    Db = require('mongodb').Db,
-    Stream = require('stream'),
-    EventEmitter = require('events').EventEmitter,
-    PubSub = require('../index.js'),
-    util = require('util');
+    PubSub = require('../index.js');
 
-tap.test('construction using default MongoDB URL', function (t) {
+tap.test('constructor using defaults', function (t) {
   var ps = new PubSub();
-  ps.on('open', function () {
-    t.ok(ps instanceof PubSub, 'should return a PubSub instance');
-    ps.close();
-  });
-  ps.on('close', function () {
-    t.end();
+  ps.open(function () {
+    ps._buffer.isCapped(function (err, capped) {
+      t.equals(ps._uri, 'mongodb://localhost:27017/mongodb-pubsub', 'connection URI should be the default');
+      t.equals(ps._collectionName, 'buffer', 'buffer collection should be the default');
+      t.ok(capped, 'should be connected to the buffer collection');
+      ps.close();
+      t.end();
+    });
   });
 });
 
-tap.test('construction using custom MongoDB URL and options', function (t) {
-  var ps = new PubSub('mongodb://localhost:27017/mongodb-pubsub', { "collection": "foo" });
-  ps.on('open', function () {
-    t.ok(ps instanceof PubSub, 'should return a PubSub instance');
-    ps.close();
-  });
-  ps.on('close', function () {
-    t.end();
+tap.test('constructor using specified MongoDB URI and buffer collection', function (t) {
+  var ps = new PubSub('mongodb://localhost:27017/foo', 'bar');
+  ps.open(function () {
+    ps._buffer.isCapped(function (err, capped) {
+      t.equals(ps._uri, 'mongodb://localhost:27017/foo', 'connection URI should be the specified MongoDB URI');
+      t.equals(ps._collectionName, 'bar', 'buffer collection should be the specified collection');
+      t.ok(capped, 'should be connected to the buffer collection');
+      ps.close();
+      t.end();
+    });
   });
 });

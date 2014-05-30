@@ -1,43 +1,19 @@
 var test = require('tap').test,
     PubSub = require('../index.js');
 
-test('subscribe is chainable', function (t) {
+test('subscribe', function (t) {
   var ps = new PubSub();
-  ps.on('open', function () {
-    t.ok(ps.subscribe('foo', function () {}) instanceof PubSub, 'should chain');
-    ps.close();
+  ps.open(function () {
+    ps.on('subscribe', function (event) {
+      t.ok(event, 'should trigger an event');
+    });
+    ps.subscribe('foo', function () {}, function () {
+      t.ok(ps._channels.emit('foo'), 'channel should have a listener');
+      ps.subscribe(function () {}, function () {
+        t.ok(ps._channels.emit('message'), 'channel should have a listener');
+        ps.close();
+        t.end();
+      });
+    });
   });
-  ps.on('close', function () {
-    t.end();
-  });
-});
-
-test('subscribe emits a local event', function (t) {
-  var ps = new PubSub();
-  ps.on('open', function () {
-    ps.subscribe('foo', function () {});
-  });
-  ps.on('subscribe', function (event) {
-    t.ok(true, 'subscribe should trigger an event');
-    ps.close();
-  });
-  ps.on('close', function () {
-    t.end();
-  });
-});
-
-test('subscribe adds channel listeners', function (t) {
-  var ps = new PubSub();
-  ps.on('open', function () {
-    t.ok(ps._channels.emit('foo'), 'foo should have a listener');
-    t.ok(ps._channels.emit('bar'), 'bar should have a listener');
-    t.ok(ps._channels.emit('baz'), 'baz should have a listener');
-    ps.close();
-  });
-  ps.on('close', function () {
-    t.end();
-  });
-  ps.subscribe('foo', function () {});
-  ps.subscribe('bar', function () {});
-  ps.subscribe('baz', function () {});
 });
