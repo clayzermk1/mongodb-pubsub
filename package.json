@@ -17,7 +17,7 @@
   },
   "scripts": {
     "doc": "./node_modules/.bin/jsdoc -d doc index.js",
-    "test": "tap ./test"
+    "test": "./node_modules/.bin/tap ./test"
   },
   "repository": {
     "type": "git",
