@@ -60,7 +60,7 @@ PubSub.prototype._connect = function () {
   this._stream.on('data', function (message) {
     //console.log('message', util.inspect(message));
     self._channels.emit.apply(self._channels, message.args);
-    self.emit('message', message.args);
+    self.emit.apply(self, ['message'].concat(Array.prototype.slice.call(message.args, 0)));
     self._last = message.timestamp;
   });
 };
