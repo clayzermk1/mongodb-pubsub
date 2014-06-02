@@ -4,9 +4,9 @@
  * @module PubSub
  */
 
-var EventEmitter = require('events').EventEmitter,
-    MongoClient = require('mongodb').MongoClient,
-    util = require('util');
+var EventEmitter = require('events').EventEmitter
+  , MongoClient = require('mongodb').MongoClient
+  , util = require('util');
 
 /**
  * @public
@@ -228,7 +228,7 @@ PubSub.prototype.unsubscribe = function (event, callback) {
 PubSub.prototype.publish = function (event) {
   var self = this;
 
-  // create a serialized form of the array-like arguments object for stroage in the database
+  // create a serialized form of the array-like arguments object for storage in the database
   var args = JSON.parse(JSON.stringify(arguments));
   args.length = arguments.length;
 
